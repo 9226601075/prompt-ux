@@ -1,7 +1,7 @@
 "use client";
 
-import ForgotPasswordPage from "@/components/auth/ForgotPasswordPage";
+import { redirect } from "next/navigation";
 
 export default function ForgotPasswordRoute() {
-  return <ForgotPasswordPage />;
+  redirect("/");
 }
