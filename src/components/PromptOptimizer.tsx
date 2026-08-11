@@ -22,12 +22,6 @@ import { createPromptValidator } from "@/lib/pipeline/validation/registry";
 import type { ValidationResult } from "@/lib/pipeline/validation/types";
 import Link from "next/link";
 import { saveGeneratedPrompt } from "@/lib/workspace/savePrompt";
-import {
-  FREE_PROMPTS_PER_DAY,
-  consumeFreePrompts,
-  getUsageForCurrentUser,
-  type FreeUsageRecord,
-} from "@/lib/usageLimit";
 
 export default function PromptOptimizer() {
   const [idea, setIdea] = useState("");
@@ -49,8 +43,6 @@ export default function PromptOptimizer() {
   const [showPipeline, setShowPipeline] = useState(true);
   const [pipelineResult, setPipelineResult] = useState<PipelineRunResult | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [usage, setUsage] = useState<FreeUsageRecord | null>(null);
-  const [showUpgrade, setShowUpgrade] = useState(false);
   const exportButtonRef = useRef<HTMLDivElement | null>(null);
 
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? null;
@@ -65,10 +57,6 @@ export default function PromptOptimizer() {
     const timeout = window.setTimeout(() => setExportMessage(""), 2200);
     return () => window.clearTimeout(timeout);
   }, [exportMessage]);
-
-  useEffect(() => {
-    setUsage(getUsageForCurrentUser());
-  }, []);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -91,10 +79,6 @@ export default function PromptOptimizer() {
 
   async function handleGenerate() {
     if (!idea.trim()) return;
-    if (usage?.remaining === 0) {
-      setShowUpgrade(true);
-      return;
-    }
 
     setIsGenerating(true);
     setCopied(false);
@@ -161,8 +145,6 @@ export default function PromptOptimizer() {
         ],
       };
 
-      const nextUsage = consumeFreePrompts();
-      setUsage(nextUsage);
       setPipelineResult(pipeline);
       setValidationResult(validation);
       setVersions([initialVersion]);
@@ -361,14 +343,10 @@ export default function PromptOptimizer() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
-                Free Prompt Remaining: <span className="font-semibold text-white">{usage?.remaining ?? FREE_PROMPTS_PER_DAY}/{FREE_PROMPTS_PER_DAY}</span>
-              </div>
-
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={!idea.trim() || isGenerating || (usage?.remaining ?? FREE_PROMPTS_PER_DAY) <= 0}
+                disabled={!idea.trim() || isGenerating}
                 className="mt-2 w-full rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40 sm:mt-0 sm:w-auto"
               >
                 {isGenerating ? (
@@ -382,23 +360,7 @@ export default function PromptOptimizer() {
               </button>
             </div>
 
-            {usage?.remaining === 0 && (
-            <div className="mt-4 rounded-3xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-100">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="font-semibold">Free usage limit reached.</div>
-                  <p className="text-slate-300">Upgrade to Pro to continue generating prompts today.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowUpgrade(true)}
-                  className="rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400"
-                >
-                  Upgrade to Go Pro
-                </button>
-              </div>
-            </div>
-          )}
+            
 
           {error && (
             <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -729,52 +691,7 @@ export default function PromptOptimizer() {
         </div>
       </div>
 
-        {showUpgrade && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6">
-            <div className="w-full max-w-lg rounded-3xl border border-violet-500/30 bg-slate-900 p-6 text-white shadow-2xl shadow-black/50">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">Upgrade to Pro</h2>
-                  <p className="mt-2 text-sm text-slate-400">
-                    Your free prompt quota has been exhausted. Go Pro for unlimited generation and advanced features.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowUpgrade(false)}
-                  className="rounded-full border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-900"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-300">
-                <p className="font-semibold text-white">What you get with Pro</p>
-                <ul className="list-disc space-y-2 pl-5 text-slate-300">
-                  <li>Unlimited prompt generation</li>
-                  <li>Priority prompt processing</li>
-                  <li>Saved usage history across sessions</li>
-                </ul>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  className="rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
-                >
-                  Upgrade Now
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUpgrade(false)}
-                  className="rounded-full border border-slate-700 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-slate-300 transition-colors hover:bg-slate-900"
-                >
-                  Maybe Later
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        
 
         <footer className="mt-16 text-center text-xs text-slate-600">
           Built with Next.js & Tailwind CSS
