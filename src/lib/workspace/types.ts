@@ -1,5 +1,6 @@
 export type WorkspacePromptCategory = string;
 export type WorkspacePromptMode = string;
+export type WorkspaceLanguage = string;
 
 export interface WorkspacePromptRecord {
   id: string;
@@ -12,6 +13,9 @@ export interface WorkspacePromptRecord {
   score: number;
   favorite: boolean;
   source: string;
+  inputLanguage?: WorkspaceLanguage;
+  outputLanguage?: WorkspaceLanguage;
+  originalInput?: string;
 }
 
 export interface WorkspaceStats {
@@ -31,6 +35,9 @@ export interface WorkspaceRepository {
     promptMode: WorkspacePromptMode;
     score: number;
     source?: string;
+    inputLanguage?: WorkspaceLanguage;
+    outputLanguage?: WorkspaceLanguage;
+    originalInput?: string;
   }): WorkspacePromptRecord;
   updatePrompt(id: string, updates: Partial<WorkspacePromptRecord>): WorkspacePromptRecord | null;
   deletePrompt(id: string): void;

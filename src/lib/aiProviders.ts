@@ -5,6 +5,8 @@ export type ProviderModel = {
 };
 
 import type { PromptModeId } from "@/lib/promptOptimizer";
+import { languageInstruction } from "@/lib/languageSupport";
+import type { LanguageId } from "@/lib/languageConfig";
 
 export type ProviderResponse = {
   prompt: string;
@@ -39,6 +41,9 @@ export async function callProvider(
   modelId: string,
   idea: string,
   mode: PromptModeId = "professional",
+  inputLanguage: LanguageId = "english",
+  outputLanguage: LanguageId = "english",
+  outputStyle = "professional",
 ): Promise<ProviderResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -70,7 +75,7 @@ export async function callProvider(
       messages: [
         {
           role: "system",
-          content: `You are a senior prompt engineer. Return a polished, structured prompt that improves the user's idea and keeps it concise. ${modeInstruction}`,
+          content: `You are a senior prompt engineer. Return a polished, structured prompt that improves the user's idea and keeps it concise. ${modeInstruction} ${languageInstruction(inputLanguage, outputLanguage, outputStyle)}`,
         },
         {
           role: "user",

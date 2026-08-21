@@ -1,16 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { AuthProvider } from "@/components/AuthProvider";
+import LogoutButton from "@/components/LogoutButton";
 
 export const metadata: Metadata = {
   title: "AI Prompt Optimiser",
@@ -25,9 +16,16 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>
+          <div className="w-full p-4 flex justify-end">
+            <LogoutButton />
+          </div>
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   );
 }

@@ -5,8 +5,10 @@ import {
   LocalStorageWorkspaceRepository,
   getGuestMode,
   setGuestMode,
+  setGuestSession,
 } from "@/lib/workspace/localStorageRepository";
 import type { WorkspacePromptRecord, WorkspaceStats } from "@/lib/workspace/types";
+import { useRouter } from "next/navigation";
 
 const repository = new LocalStorageWorkspaceRepository();
 
@@ -27,6 +29,7 @@ export default function MyWorkspace() {
   const [guestMode, setGuestModeState] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const router = useRouter();
 
   const loadWorkspace = () => {
     const nextPrompts = repository.getPrompts();
@@ -75,8 +78,17 @@ export default function MyWorkspace() {
   };
 
   const handleGuestToggle = () => {
+    if (guestMode) {
+      setGuestMode(false);
+      setGuestSession(false);
+      router.replace("/login");
+      router.refresh();
+      return;
+    }
+
     const nextValue = !guestMode;
     setGuestMode(nextValue);
+    setGuestSession(nextValue);
     setGuestModeState(nextValue);
   };
 
@@ -213,6 +225,8 @@ export default function MyWorkspace() {
                         <span>Created {formatDate(prompt.createdAt)}</span>
                         <span>Score {prompt.score}</span>
                         <span>Source {prompt.source}</span>
+                        {prompt.outputLanguage && <span>Output {prompt.outputLanguage}</span>}
+                        {prompt.inputLanguage && <span>Input {prompt.inputLanguage}</span>}
                       </div>
                     </div>
 

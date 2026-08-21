@@ -1,5 +1,5 @@
 import PromptOptimizer from "@/components/PromptOptimizer";
 
-export default function Home() {
+export default async function Home() {
   return <PromptOptimizer />;
 }

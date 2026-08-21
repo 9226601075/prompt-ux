@@ -8,6 +8,9 @@ export interface PromptExportPayload {
   prompt: string;
   createdAt: string;
   grade?: string;
+  inputLanguage?: string;
+  outputLanguage?: string;
+  originalInput?: string;
 }
 
 function formatDate(date = new Date()) {
@@ -48,6 +51,8 @@ function buildMarkdown(payload: PromptExportPayload) {
     "",
     "## Prompt Mode",
     payload.mode,
+    ...(payload.inputLanguage ? ["", "## Input Language", payload.inputLanguage] : []),
+    ...(payload.outputLanguage ? ["", "## Output Language", payload.outputLanguage] : []),
     "",
     "## Prompt Score",
     payload.grade ? `${payload.score} (${payload.grade})` : String(payload.score),
@@ -119,6 +124,9 @@ export async function exportPrompt(format: ExportFormat, payload: PromptExportPa
         category: payload.category,
         provider: payload.provider,
         mode: payload.mode,
+        inputLanguage: payload.inputLanguage,
+        outputLanguage: payload.outputLanguage,
+        originalInput: payload.originalInput,
         score: payload.score,
         prompt: payload.prompt,
         createdAt: payload.createdAt,

@@ -10,6 +10,9 @@ export function saveGeneratedPrompt(input: {
   promptMode: string;
   score: number;
   source?: string;
+  inputLanguage?: string;
+  outputLanguage?: string;
+  originalInput?: string;
 }): WorkspacePromptRecord {
   return repository.savePrompt(input);
 }

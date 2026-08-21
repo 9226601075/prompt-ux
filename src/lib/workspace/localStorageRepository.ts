@@ -2,6 +2,7 @@ import type { WorkspacePromptRecord, WorkspaceRepository, WorkspaceStats } from 
 
 const STORAGE_KEY = "prompt-ux-workspace";
 const GUEST_MODE_KEY = "prompt-ux-guest-mode";
+const GUEST_SESSION_COOKIE = "prompt-ux-guest";
 
 function readStoredPrompts(): WorkspacePromptRecord[] {
   if (typeof window === "undefined") {
@@ -41,6 +42,9 @@ export class LocalStorageWorkspaceRepository implements WorkspaceRepository {
     promptMode: string;
     score: number;
     source?: string;
+    inputLanguage?: string;
+    outputLanguage?: string;
+    originalInput?: string;
   }): WorkspacePromptRecord {
     const timestamp = new Date().toISOString();
     const record: WorkspacePromptRecord = {
@@ -54,6 +58,9 @@ export class LocalStorageWorkspaceRepository implements WorkspaceRepository {
       score: input.score,
       favorite: false,
       source: input.source ?? "engine",
+      inputLanguage: input.inputLanguage,
+      outputLanguage: input.outputLanguage,
+      originalInput: input.originalInput,
     };
 
     const prompts = [...readStoredPrompts(), record];
@@ -150,6 +157,16 @@ export function setGuestMode(enabled: boolean) {
   }
 
   window.localStorage.setItem(GUEST_MODE_KEY, String(enabled));
+}
+
+export function setGuestSession(enabled: boolean) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.cookie = enabled
+    ? `${GUEST_SESSION_COOKIE}=1; Path=/; SameSite=Lax`
+    : `${GUEST_SESSION_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`;
 }
 
 export function clearWorkspaceStorage() {

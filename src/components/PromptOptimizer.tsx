@@ -22,6 +22,14 @@ import { createPromptValidator } from "@/lib/pipeline/validation/registry";
 import type { ValidationResult } from "@/lib/pipeline/validation/types";
 import Link from "next/link";
 import { saveGeneratedPrompt } from "@/lib/workspace/savePrompt";
+import {
+  ENGLISH_OUTPUT_STYLES,
+  INPUT_LANGUAGE_AUTO,
+  LANGUAGE_CONFIG,
+  type EnglishOutputStyleId,
+  type LanguageId,
+  type LanguageSelection,
+} from "@/lib/languageConfig";
 
 export default function PromptOptimizer() {
   const [idea, setIdea] = useState("");
@@ -35,6 +43,9 @@ export default function PromptOptimizer() {
   const [useDemoMode, setUseDemoMode] = useState(true);
   const [demoMode, setDemoMode] = useState(false);
   const [selectedMode, setSelectedMode] = useState<PromptModeId>("professional");
+  const [inputLanguage, setInputLanguage] = useState<LanguageSelection>(INPUT_LANGUAGE_AUTO);
+  const [outputLanguage, setOutputLanguage] = useState<LanguageId>("english");
+  const [outputStyle, setOutputStyle] = useState<EnglishOutputStyleId>("professional");
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
@@ -97,7 +108,14 @@ export default function PromptOptimizer() {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: idea.trim(), useDemoMode, mode: selectedMode }),
+        body: JSON.stringify({
+          idea: idea.trim(),
+          useDemoMode,
+          mode: selectedMode,
+          inputLanguage,
+          outputLanguage,
+          outputStyle,
+        }),
       });
 
       const data = await response.json();
@@ -110,8 +128,8 @@ export default function PromptOptimizer() {
       const pipelineEngine = new PromptPipelineEngine(createDefaultPipelineLayers());
       const pipeline = await pipelineEngine.run(idea.trim());
       const validator = createPromptValidator();
-      const validation = validator.validate(pipeline.finalPrompt);
-      const initialPrompt = pipeline.finalPrompt;
+      const initialPrompt = data.prompt ?? pipeline.finalPrompt;
+      const validation = validator.validate(initialPrompt);
 
       const initialVersion: PromptVersion = {
         id: "version-1",
@@ -157,7 +175,10 @@ export default function PromptOptimizer() {
         category: initialVersion.analysis.category,
         promptMode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
         score: initialVersion.score.score,
-        source: demoMode ? "demo" : "engine",
+        source: data.demoMode ? "demo" : "engine",
+        inputLanguage: data.inputLanguage ?? inputLanguage,
+        outputLanguage: data.outputLanguage ?? outputLanguage,
+        originalInput: idea.trim(),
       });
     } catch {
       setError("Failed to reach the server. Please try again.");
@@ -180,6 +201,7 @@ export default function PromptOptimizer() {
         previousPrompt: selectedVersion.prompt,
         previousAnalysis: selectedVersion.analysis,
         versionNumber: versions.length + 1,
+        outputLanguage,
       });
 
       const nextVersions = [...versions, nextVersion];
@@ -193,6 +215,9 @@ export default function PromptOptimizer() {
         promptMode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
         score: nextVersion.score.score,
         source: demoMode ? "demo" : "engine",
+        inputLanguage,
+        outputLanguage,
+        originalInput: idea.trim(),
       });
     } catch {
       setError("Failed to refine the prompt. Please try again.");
@@ -212,6 +237,9 @@ export default function PromptOptimizer() {
         prompt: result,
         createdAt: new Date().toISOString(),
         grade: score?.grade,
+        inputLanguage,
+        outputLanguage,
+        originalInput: idea.trim(),
       });
       setCopied(true);
       setExportMessage("Prompt copied successfully.");
@@ -233,6 +261,9 @@ export default function PromptOptimizer() {
         prompt: result,
         createdAt: new Date().toISOString(),
         grade: score?.grade,
+        inputLanguage,
+        outputLanguage,
+        originalInput: idea.trim(),
       });
 
       if (format === "copy") {
@@ -288,6 +319,51 @@ export default function PromptOptimizer() {
               onSelect={handleSuggestionSelect}
               placeholder="Try: create a launch plan for an AI startup..."
             />
+
+            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="mb-3 text-sm font-semibold text-slate-200">Language</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Input Language
+                  <select
+                    value={inputLanguage}
+                    onChange={(event) => setInputLanguage(event.target.value as LanguageSelection)}
+                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
+                  >
+                    <option value={INPUT_LANGUAGE_AUTO}>Auto Detect</option>
+                    {LANGUAGE_CONFIG.map((language) => (
+                      <option key={language.id} value={language.id}>{language.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Output Language
+                  <select
+                    value={outputLanguage}
+                    onChange={(event) => setOutputLanguage(event.target.value as LanguageId)}
+                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
+                  >
+                    {LANGUAGE_CONFIG.map((language) => (
+                      <option key={language.id} value={language.id}>{language.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {outputLanguage === "english" && (
+                <label className="mt-3 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                  English Output Style
+                  <select
+                    value={outputStyle}
+                    onChange={(event) => setOutputStyle(event.target.value as EnglishOutputStyleId)}
+                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
+                  >
+                    {ENGLISH_OUTPUT_STYLES.map((style) => (
+                      <option key={style.id} value={style.id}>{style.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <button

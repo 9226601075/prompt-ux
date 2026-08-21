@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callProvider, getAvailableModels } from "@/lib/aiProviders";
 import { optimizePromptLocally, type PromptModeId } from "@/lib/promptOptimizer";
+import { INPUT_LANGUAGE_AUTO, type LanguageId, type LanguageSelection } from "@/lib/languageConfig";
+import { detectInputLanguage, isLanguageId } from "@/lib/languageSupport";
 
 type GenerateRequestBody = {
   idea?: string;
   model?: string;
   useDemoMode?: boolean;
   mode?: PromptModeId;
+  inputLanguage?: LanguageSelection;
+  outputLanguage?: LanguageId;
+  outputStyle?: string;
 };
 
 function isDemoFallbackError(error: unknown): boolean {
@@ -42,8 +47,8 @@ function isDemoFallbackError(error: unknown): boolean {
   return false;
 }
 
-function buildDemoResponse(idea: string, mode: PromptModeId, providerError?: string) {
-  const result = optimizePromptLocally(idea, mode);
+function buildDemoResponse(idea: string, mode: PromptModeId, outputLanguage: LanguageId, outputStyle: string, providerError?: string) {
+  const result = optimizePromptLocally(idea, mode, outputLanguage, outputStyle as "professional" | "simple" | "technical" | "creative");
 
   return {
     ...result,
@@ -73,6 +78,10 @@ export async function POST(request: NextRequest) {
   const model = body.model ?? "openai/gpt-4.1-mini";
   const useDemoMode = body.useDemoMode === true;
   const mode = body.mode ?? "professional";
+  const inputSelection: LanguageSelection = body.inputLanguage === INPUT_LANGUAGE_AUTO || isLanguageId(body.inputLanguage)
+    ? body.inputLanguage
+    : INPUT_LANGUAGE_AUTO;
+  const outputLanguage = isLanguageId(body.outputLanguage) ? body.outputLanguage : "english";
 
   if (!idea || typeof idea !== "string" || !idea.trim()) {
     return NextResponse.json(
@@ -82,14 +91,20 @@ export async function POST(request: NextRequest) {
   }
 
   const trimmedIdea = idea.trim();
+  const detected = detectInputLanguage(trimmedIdea, inputSelection);
 
   if (useDemoMode) {
-    return NextResponse.json(buildDemoResponse(trimmedIdea, mode));
+    return NextResponse.json({
+      ...buildDemoResponse(trimmedIdea, mode, outputLanguage, body.outputStyle ?? "professional"),
+      inputLanguage: detected.language,
+      outputLanguage,
+      outputStyle: body.outputStyle ?? "professional",
+    });
   }
 
   try {
-    const response = await callProvider(model, trimmedIdea, mode);
-    return NextResponse.json({ ...response, demoMode: false, mode });
+    const response = await callProvider(model, trimmedIdea, mode, detected.language, outputLanguage, body.outputStyle);
+    return NextResponse.json({ ...response, demoMode: false, mode, inputLanguage: detected.language, outputLanguage, outputStyle: body.outputStyle ?? "professional" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
 
@@ -99,7 +114,12 @@ export async function POST(request: NextRequest) {
         model,
       });
 
-      return NextResponse.json(buildDemoResponse(trimmedIdea, mode, message));
+      return NextResponse.json({
+        ...buildDemoResponse(trimmedIdea, mode, outputLanguage, body.outputStyle ?? "professional", message),
+        inputLanguage: detected.language,
+        outputLanguage,
+        outputStyle: body.outputStyle ?? "professional",
+      });
     }
 
     return NextResponse.json(
