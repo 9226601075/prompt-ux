@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   LocalStorageWorkspaceRepository,
   getGuestMode,
@@ -17,16 +17,10 @@ function formatDate(value: string) {
 }
 
 export default function MyWorkspace() {
-  const [prompts, setPrompts] = useState<WorkspacePromptRecord[]>([]);
-  const [stats, setStats] = useState<WorkspaceStats>({
-    totalPrompts: 0,
-    favorites: 0,
-    recentActivities: 0,
-    averagePromptScore: 0,
-    recentPrompts: [],
-  });
+  const [prompts, setPrompts] = useState<WorkspacePromptRecord[]>(() => repository.getPrompts());
+  const [stats, setStats] = useState<WorkspaceStats>(() => repository.getStats());
   const [search, setSearch] = useState("");
-  const [guestMode, setGuestModeState] = useState(true);
+  const [guestMode, setGuestModeState] = useState(() => getGuestMode());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const router = useRouter();
@@ -37,10 +31,6 @@ export default function MyWorkspace() {
     setStats(repository.getStats());
     setGuestModeState(getGuestMode());
   };
-
-  useEffect(() => {
-    loadWorkspace();
-  }, []);
 
   const filteredPrompts = useMemo(() => {
     if (!search.trim()) {
@@ -225,8 +215,6 @@ export default function MyWorkspace() {
                         <span>Created {formatDate(prompt.createdAt)}</span>
                         <span>Score {prompt.score}</span>
                         <span>Source {prompt.source}</span>
-                        {prompt.outputLanguage && <span>Output {prompt.outputLanguage}</span>}
-                        {prompt.inputLanguage && <span>Input {prompt.inputLanguage}</span>}
                       </div>
                     </div>
 

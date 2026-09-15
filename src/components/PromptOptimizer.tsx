@@ -1,73 +1,53 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type {
-  MissingInformation,
-  PromptAnalysis,
-  PromptScore,
-  PromptVersion,
-} from "@/lib/promptOptimizer";
 import type { PromptSearchResult } from "@/lib/promptSearch";
+import type { ImageAnalysisResult } from "@/lib/imageAnalysis/types";
 import { SmartAutocomplete } from "@/components/SmartAutocomplete";
+import ImagePromptAnalyzer from "@/components/ImagePromptAnalyzer";
 import {
   PROMPT_MODE_OPTIONS,
-  buildRefinedPromptVersion,
   type PromptModeId,
 } from "@/lib/promptOptimizer";
-import { exportPrompt, type ExportFormat } from "@/lib/exportPrompt";
-import { PromptPipelineEngine } from "@/lib/pipeline/engine";
-import { createDefaultPipelineLayers } from "@/lib/pipeline/registry";
-import type { PipelineRunResult } from "@/lib/pipeline/types";
-import { createPromptValidator } from "@/lib/pipeline/validation/registry";
-import type { ValidationResult } from "@/lib/pipeline/validation/types";
-import Link from "next/link";
-import { saveGeneratedPrompt } from "@/lib/workspace/savePrompt";
-import {
-  ENGLISH_OUTPUT_STYLES,
-  INPUT_LANGUAGE_AUTO,
-  LANGUAGE_CONFIG,
-  type EnglishOutputStyleId,
-  type LanguageId,
-  type LanguageSelection,
-} from "@/lib/languageConfig";
+import { usePromptGenerator } from "@/components/usePromptGenerator";
 
 export default function PromptOptimizer() {
   const [idea, setIdea] = useState("");
-  const [result, setResult] = useState("");
-  const [analysis, setAnalysis] = useState<PromptAnalysis | null>(null);
-  const [score, setScore] = useState<PromptScore | null>(null);
-  const [missingInfo, setMissingInfo] = useState<MissingInformation | null>(null);
-  const [error, setError] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [useDemoMode, setUseDemoMode] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
   const [selectedMode, setSelectedMode] = useState<PromptModeId>("professional");
-  const [inputLanguage, setInputLanguage] = useState<LanguageSelection>(INPUT_LANGUAGE_AUTO);
-  const [outputLanguage, setOutputLanguage] = useState<LanguageId>("english");
-  const [outputStyle, setOutputStyle] = useState<EnglishOutputStyleId>("professional");
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const [isRefining, setIsRefining] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [exportMessage, setExportMessage] = useState("");
-  const [showPipeline, setShowPipeline] = useState(true);
-  const [pipelineResult, setPipelineResult] = useState<PipelineRunResult | null>(null);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [imageAnalysis, setImageAnalysis] = useState<ImageAnalysisResult | null>(null);
   const exportButtonRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? null;
-  const bestVersionScore = versions.reduce(
-    (bestScore, version) => Math.max(bestScore, version.score.score),
-    0,
-  );
+  const promptGenerator = usePromptGenerator({ idea, imageAnalysis, selectedMode, useDemoMode });
+  const {
+    result,
+    analysis,
+    score,
+    missingInfo,
+    generationError,
+    isGenerating,
+    demoMode,
+    versions,
+    selectedVersion,
+    bestVersionScore,
+    isRefining,
+    exportMessage,
+    showPipeline,
+    pipelineResult,
+    validationResult,
+    generationInput,
+    setShowPipeline,
+    applyVersion,
+    handleGenerate,
+    handleRefine,
+    handleExport,
+  } = promptGenerator;
 
-  useEffect(() => {
-    if (!exportMessage) return;
-
-    const timeout = window.setTimeout(() => setExportMessage(""), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [exportMessage]);
+  async function handleExportAndClose(format: Parameters<typeof handleExport>[0]) {
+    await handleExport(format);
+    setIsExportOpen(false);
+  }
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -80,290 +60,56 @@ export default function PromptOptimizer() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  function applyVersion(version: PromptVersion) {
-    setResult(version.prompt);
-    setAnalysis(version.analysis);
-    setScore(version.score);
-    setMissingInfo(version.missingInfo);
-    setSelectedVersionId(version.id);
-  }
-
-  async function handleGenerate() {
-    if (!idea.trim()) return;
-
-    setIsGenerating(true);
-    setCopied(false);
-    setError("");
-    setResult("");
-    setAnalysis(null);
-    setScore(null);
-    setMissingInfo(null);
-    setVersions([]);
-    setSelectedVersionId(null);
-    setPipelineResult(null);
-    setValidationResult(null);
-    setDemoMode(false);
-
-    try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          idea: idea.trim(),
-          useDemoMode,
-          mode: selectedMode,
-          inputLanguage,
-          outputLanguage,
-          outputStyle,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
-        return;
-      }
-
-      const pipelineEngine = new PromptPipelineEngine(createDefaultPipelineLayers());
-      const pipeline = await pipelineEngine.run(idea.trim());
-      const validator = createPromptValidator();
-      const initialPrompt = data.prompt ?? pipeline.finalPrompt;
-      const validation = validator.validate(initialPrompt);
-
-      const initialVersion: PromptVersion = {
-        id: "version-1",
-        versionNumber: 1,
-        prompt: initialPrompt,
-        analysis:
-          data.analysis ?? {
-            intent: "general",
-            category: "general",
-            role: "a highly capable assistant",
-            template: "Generated Prompt",
-            addedContext: [],
-          },
-        score:
-          data.score ?? {
-            score: 60,
-            grade: "Needs Improvement",
-            explanation: ["The prompt was generated successfully."],
-          },
-        missingInfo:
-          data.missingInfo ?? {
-            missingItems: [],
-            suggestions: [],
-            isComplete: true,
-            message: "The prompt is ready to review.",
-          },
-        improvements: [
-          "Clear objective and structure",
-          "Added contextual framing",
-          "Improved output guidance",
-        ],
-      };
-
-      setPipelineResult(pipeline);
-      setValidationResult(validation);
-      setVersions([initialVersion]);
-      applyVersion(initialVersion);
-      setDemoMode(Boolean(data.demoMode));
-
-      saveGeneratedPrompt({
-        title: idea.trim().slice(0, 48) || "Generated Prompt",
-        content: initialPrompt,
-        category: initialVersion.analysis.category,
-        promptMode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
-        score: initialVersion.score.score,
-        source: data.demoMode ? "demo" : "engine",
-        inputLanguage: data.inputLanguage ?? inputLanguage,
-        outputLanguage: data.outputLanguage ?? outputLanguage,
-        originalInput: idea.trim(),
-      });
-    } catch {
-      setError("Failed to reach the server. Please try again.");
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
-  async function handleRefine() {
-    if (!idea.trim() || !selectedVersion || isRefining) return;
-
-    setIsRefining(true);
-    setCopied(false);
-    setError("");
-
-    try {
-      const nextVersion = buildRefinedPromptVersion({
-        idea: idea.trim(),
-        mode: selectedMode,
-        previousPrompt: selectedVersion.prompt,
-        previousAnalysis: selectedVersion.analysis,
-        versionNumber: versions.length + 1,
-        outputLanguage,
-      });
-
-      const nextVersions = [...versions, nextVersion];
-      setVersions(nextVersions);
-      applyVersion(nextVersion);
-
-      saveGeneratedPrompt({
-        title: idea.trim().slice(0, 48) || "Refined Prompt",
-        content: nextVersion.prompt,
-        category: nextVersion.analysis.category,
-        promptMode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
-        score: nextVersion.score.score,
-        source: demoMode ? "demo" : "engine",
-        inputLanguage,
-        outputLanguage,
-        originalInput: idea.trim(),
-      });
-    } catch {
-      setError("Failed to refine the prompt. Please try again.");
-    } finally {
-      setIsRefining(false);
-    }
-  }
-
-  async function handleCopy() {
-    if (!result) return;
-    try {
-      await exportPrompt("copy", {
-        category: analysis?.category ?? "general",
-        provider: demoMode ? "Demo Mode" : "OpenRouter",
-        mode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
-        score: score?.score ?? 0,
-        prompt: result,
-        createdAt: new Date().toISOString(),
-        grade: score?.grade,
-        inputLanguage,
-        outputLanguage,
-        originalInput: idea.trim(),
-      });
-      setCopied(true);
-      setExportMessage("Prompt copied successfully.");
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("Clipboard access is unavailable. Please try another export option.");
-    }
-  }
-
-  async function handleExport(format: ExportFormat) {
-    if (!result) return;
-
-    try {
-      await exportPrompt(format, {
-        category: analysis?.category ?? "general",
-        provider: demoMode ? "Demo Mode" : "OpenRouter",
-        mode: PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label ?? selectedMode,
-        score: score?.score ?? 0,
-        prompt: result,
-        createdAt: new Date().toISOString(),
-        grade: score?.grade,
-        inputLanguage,
-        outputLanguage,
-        originalInput: idea.trim(),
-      });
-
-      if (format === "copy") {
-        setExportMessage("Prompt copied successfully.");
-      } else {
-        setExportMessage(`${format.toUpperCase()} export started.`);
-      }
-      setIsExportOpen(false);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Export failed.");
-      setIsExportOpen(false);
-    }
-  }
-
   function handleSuggestionSelect(template: PromptSearchResult) {
     setIdea(template.starterPrompt);
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950">
+    <div className="relative min-h-screen overflow-hidden bg-[#07111f] text-slate-100">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-600/20 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="absolute left-1/2 top-0 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-blue-600/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-cyan-500/5 blur-3xl" />
       </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-6 py-16 sm:px-8 sm:py-24">
-        <header className="mb-10 text-center">
-          <div className="mb-4 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-sm text-violet-300">
-            <span className="inline-flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-              Smart Prompt Engine
-            </span>
-            <Link
-              href="/workspace"
-              className="rounded-full border border-violet-400/30 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-violet-200 transition-colors hover:bg-slate-900"
-            >
-              Open My Workspace
-            </Link>
+      <main className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-10 sm:px-8 sm:py-14">
+        <header className="mb-9 max-w-3xl">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+            AI workspace
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             AI Prompt Optimiser
           </h1>
-          <p className="mt-4 text-base text-slate-400 sm:text-lg">
-            Describe your goal and let the autocomplete surface the right prompt instantly.
+          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
+            Transform rough ideas and visual references into clear, high-quality AI prompts.
           </p>
         </header>
 
-        <div className="flex flex-1 flex-col gap-6">
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
-            <SmartAutocomplete
-              value={idea}
-              onChange={setIdea}
-              onSelect={handleSuggestionSelect}
-              placeholder="Try: create a launch plan for an AI startup..."
-            />
+        <div className="grid flex-1 gap-6 md:grid-cols-2 md:items-start">
+          <section className="flex min-w-0 flex-col gap-3" aria-labelledby="image-analyzer-heading">
+            <h2 id="image-analyzer-heading" className="text-lg font-semibold text-white sm:text-xl">
+              1. Image Analyzer
+            </h2>
+            <ImagePromptAnalyzer onAnalysisChange={setImageAnalysis} />
+          </section>
 
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-              <div className="mb-3 text-sm font-semibold text-slate-200">Language</div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Input Language
-                  <select
-                    value={inputLanguage}
-                    onChange={(event) => setInputLanguage(event.target.value as LanguageSelection)}
-                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
-                  >
-                    <option value={INPUT_LANGUAGE_AUTO}>Auto Detect</option>
-                    {LANGUAGE_CONFIG.map((language) => (
-                      <option key={language.id} value={language.id}>{language.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Output Language
-                  <select
-                    value={outputLanguage}
-                    onChange={(event) => setOutputLanguage(event.target.value as LanguageId)}
-                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
-                  >
-                    {LANGUAGE_CONFIG.map((language) => (
-                      <option key={language.id} value={language.id}>{language.name}</option>
-                    ))}
-                  </select>
-                </label>
+          <section className="flex min-w-0 flex-col gap-3" aria-labelledby="prompt-generator-heading">
+            <h2 id="prompt-generator-heading" className="text-lg font-semibold text-white sm:text-xl">
+              2. Prompt Generator
+            </h2>
+
+            <div className="rounded-2xl border border-slate-800/90 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 sm:p-6">
+              <div className="mb-5 border-b border-slate-800 pb-5">
+                <p className="text-sm font-medium text-slate-200">Build a better prompt</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Start with a goal, question, or rough direction.</p>
               </div>
-              {outputLanguage === "english" && (
-                <label className="mt-3 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                  English Output Style
-                  <select
-                    value={outputStyle}
-                    onChange={(event) => setOutputStyle(event.target.value as EnglishOutputStyleId)}
-                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm normal-case tracking-normal text-slate-200 outline-none focus:border-violet-500"
-                  >
-                    {ENGLISH_OUTPUT_STYLES.map((style) => (
-                      <option key={style.id} value={style.id}>{style.label}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
+
+              <SmartAutocomplete
+                value={idea}
+                onChange={setIdea}
+                onSelect={handleSuggestionSelect}
+                placeholder="Describe what you want to create..."
+              />
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <button
@@ -371,16 +117,16 @@ export default function PromptOptimizer() {
                 onClick={() => setUseDemoMode((value) => !value)}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
                   useDemoMode
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    ? "border-slate-700 bg-slate-950/70 text-slate-300"
                     : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
                 }`}
               >
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    useDemoMode ? "bg-amber-400" : "bg-emerald-400"
+                    useDemoMode ? "bg-cyan-300" : "bg-emerald-400"
                   }`}
                 />
-                {useDemoMode ? "Demo Mode On" : "Real API Mode"}
+                {useDemoMode ? "Free AI Mode" : "Real API Mode"}
               </button>
 
               <p className="text-xs text-slate-400">
@@ -390,7 +136,7 @@ export default function PromptOptimizer() {
               </p>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-1.5">
               {PROMPT_MODE_OPTIONS.map((mode) => {
                 const isActive = selectedMode === mode.id;
 
@@ -399,10 +145,10 @@ export default function PromptOptimizer() {
                     key={mode.id}
                     type="button"
                     onClick={() => setSelectedMode(mode.id)}
-                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                       isActive
-                        ? "border-violet-500/40 bg-violet-500/15 text-violet-200"
-                        : "border-slate-700 bg-slate-950/50 text-slate-300 hover:border-slate-600"
+                        ? "border-blue-400/30 bg-blue-500/15 text-blue-100 shadow-sm"
+                        : "border-transparent text-slate-400 hover:border-slate-700 hover:text-slate-200"
                     }`}
                   >
                     {mode.label}
@@ -411,41 +157,38 @@ export default function PromptOptimizer() {
               })}
             </div>
 
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/50 px-3 py-1.5 text-sm text-slate-300">
+            <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
               <span className="text-slate-500">Selected mode:</span>
               <span className="font-semibold text-white">
                 {PROMPT_MODE_OPTIONS.find((mode) => mode.id === selectedMode)?.label}
               </span>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={!idea.trim() || isGenerating}
-                className="mt-2 w-full rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40 sm:mt-0 sm:w-auto"
-              >
-                {isGenerating ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Generating...
-                  </span>
-                ) : (
-                  "Generate Prompt"
-                )}
-              </button>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!generationInput || isGenerating}
+              className="mt-5 w-full rounded-xl bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 transition-all hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+            >
+              {isGenerating ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Generating...
+                </span>
+              ) : (
+                "Generate Prompt"
+              )}
+            </button>
             </div>
 
-            
+            {generationError && (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {generationError}
+              </div>
+            )}
 
-          {error && (
-            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          )}
-
-          {result && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl backdrop-blur-sm">
+            {result && (
+              <div className="min-w-0 rounded-2xl border border-slate-800/90 bg-slate-900/70 p-5 shadow-xl shadow-black/15 sm:p-6">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -511,7 +254,7 @@ export default function PromptOptimizer() {
                       <div className="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-slate-700 bg-slate-900/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl">
                         <button
                           type="button"
-                          onClick={() => handleExport("copy")}
+                          onClick={() => handleExportAndClose("copy")}
                           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
                         >
                           <span>📋</span>
@@ -519,7 +262,7 @@ export default function PromptOptimizer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleExport("txt")}
+                          onClick={() => handleExportAndClose("txt")}
                           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
                         >
                           <span>📝</span>
@@ -527,7 +270,7 @@ export default function PromptOptimizer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleExport("markdown")}
+                          onClick={() => handleExportAndClose("markdown")}
                           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
                         >
                           <span>📄</span>
@@ -535,7 +278,7 @@ export default function PromptOptimizer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleExport("json")}
+                          onClick={() => handleExportAndClose("json")}
                           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
                         >
                           <span>🧩</span>
@@ -543,7 +286,7 @@ export default function PromptOptimizer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleExport("print")}
+                          onClick={() => handleExportAndClose("print")}
                           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
                         >
                           <span>🖨️</span>
@@ -762,12 +505,11 @@ export default function PromptOptimizer() {
               <pre className="whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-950/50 p-4 font-mono text-sm leading-relaxed text-slate-300">
                 {result}
               </pre>
-            </div>
-          )}
-        </div>
-      </div>
+              </div>
+            )}
+          </section>
 
-        
+        </div>
 
         <footer className="mt-16 text-center text-xs text-slate-600">
           Built with Next.js & Tailwind CSS

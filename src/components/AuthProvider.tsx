@@ -1,9 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import type { Session, User } from "@supabase/supabase-js";
 
 type AuthContextType = {
   user: User | null;
@@ -17,15 +17,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(supabase));
   const router = useRouter();
 
   useEffect(() => {
     let isMounted = true;
-    const browserSupabase = supabase;
 
-    if (!browserSupabase) {
-      setLoading(false);
+    const client = supabase;
+    if (!client) {
       return () => {
         isMounted = false;
       };
@@ -42,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { session: currentSession },
         error,
-      } = await browserSupabase.auth.getSession();
+      } = await client.auth.getSession();
 
       if (error) {
         updateAuthState(null);
@@ -54,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadSession();
 
-    const { data: listener } = browserSupabase.auth.onAuthStateChange((_event, updatedSession) => {
+    const { data: listener } = client.auth.onAuthStateChange((_event, updatedSession) => {
       updateAuthState(updatedSession ?? null);
     });
 
@@ -65,20 +64,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    if (!supabase) {
-      setUser(null);
-      setSession(null);
-      router.replace("/login");
-      router.refresh();
-      return;
-    }
-
-    const { error } = await supabase.auth.signOut();
     setUser(null);
     setSession(null);
 
-    if (error) {
-      console.error("Sign out error:", error.message);
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Sign out error:", error.message);
+      }
     }
 
     router.replace("/login");

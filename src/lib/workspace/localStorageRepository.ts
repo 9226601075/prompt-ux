@@ -42,9 +42,6 @@ export class LocalStorageWorkspaceRepository implements WorkspaceRepository {
     promptMode: string;
     score: number;
     source?: string;
-    inputLanguage?: string;
-    outputLanguage?: string;
-    originalInput?: string;
   }): WorkspacePromptRecord {
     const timestamp = new Date().toISOString();
     const record: WorkspacePromptRecord = {
@@ -58,9 +55,6 @@ export class LocalStorageWorkspaceRepository implements WorkspaceRepository {
       score: input.score,
       favorite: false,
       source: input.source ?? "engine",
-      inputLanguage: input.inputLanguage,
-      outputLanguage: input.outputLanguage,
-      originalInput: input.originalInput,
     };
 
     const prompts = [...readStoredPrompts(), record];

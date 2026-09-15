@@ -2,14 +2,22 @@ export type ProviderModel = {
   id: string;
   name: string;
   provider: string;
+  capabilities: readonly string[];
+  enabled: boolean;
 };
 
 import type { PromptModeId } from "@/lib/promptOptimizer";
 import { languageInstruction } from "@/lib/languageSupport";
 import type { LanguageId } from "@/lib/languageConfig";
+import { generateText } from "@/lib/ai/router";
+import { getPromptGenerationModels } from "@/lib/ai/modelRegistry";
+import { optimizePromptLocally } from "@/lib/promptOptimizer";
 
 export type ProviderResponse = {
   prompt: string;
+  modelUsed: string;
+  provider: string;
+  fallbackUsed: boolean;
   analysis?: {
     intent: string;
     category: string;
@@ -27,30 +35,24 @@ export type ProviderResponse = {
   };
 };
 
-const MODEL_CATALOG: ProviderModel[] = [
-  { id: "openai/gpt-4.1-mini", name: "GPT-4.1 Mini", provider: "openai" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", provider: "anthropic" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", provider: "google" },
-];
-
 export function getAvailableModels(): ProviderModel[] {
-  return MODEL_CATALOG;
+  return getPromptGenerationModels().map((model) => ({
+    id: model.id,
+    name: model.displayName,
+    provider: model.provider,
+    capabilities: model.capabilities,
+    enabled: model.enabled,
+  }));
 }
 
 export async function callProvider(
-  modelId: string,
+  modelId: string | undefined,
   idea: string,
   mode: PromptModeId = "professional",
   inputLanguage: LanguageId = "english",
   outputLanguage: LanguageId = "english",
   outputStyle = "professional",
 ): Promise<ProviderResponse> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("OpenRouter API key is not configured.");
-  }
-
   const modeInstruction =
     mode === "quick"
       ? "Create a concise prompt that is short and immediately useful."
@@ -62,49 +64,28 @@ export async function callProvider(
       ? "Create a business-focused prompt that emphasizes audience value, positioning, marketing, and conversion optimization."
       : "Create the most comprehensive prompt possible using advanced prompt engineering techniques.";
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-      "X-Title": "Prompt UX",
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        {
-          role: "system",
-          content: `You are a senior prompt engineer. Return a polished, structured prompt that improves the user's idea and keeps it concise. ${modeInstruction} ${languageInstruction(inputLanguage, outputLanguage, outputStyle)}`,
-        },
-        {
-          role: "user",
-          content: idea,
-        },
-      ],
-      temperature: 0.7,
-    }),
+  const localOptimization = optimizePromptLocally(
+    idea,
+    mode,
+    outputLanguage,
+    outputStyle as "professional" | "simple" | "technical" | "creative",
+  );
+  const response = await generateText({
+    capability: "prompt_optimization",
+    modelId,
+    systemInstruction: `You are a senior prompt engineer. Return a polished, structured prompt that improves the user's idea and keeps it concise. ${modeInstruction} ${languageInstruction(inputLanguage, outputLanguage, outputStyle)}`,
+    userInput: localOptimization.prompt,
+    temperature: 0.7,
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`OpenRouter request failed: ${response.status} ${errorBody}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-
-  const content = data.choices?.[0]?.message?.content?.trim();
-
-  if (!content) {
-    throw new Error("OpenRouter returned an empty response.");
-  }
+  const content = response.result.content;
 
   return {
     prompt: content,
+    modelUsed: response.result.modelId,
+    provider: response.result.provider,
+    fallbackUsed: response.fallbackUsed,
     analysis: {
-      intent: "Generated via OpenRouter",
+      intent: `Generated via ${response.result.provider}`,
       category: "AI Assisted",
       role: "Prompt Engineer",
     },

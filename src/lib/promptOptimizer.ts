@@ -1,5 +1,6 @@
 import { applyOutputLanguage } from "./languageSupport";
 import type { EnglishOutputStyleId, LanguageId } from "./languageConfig";
+
 export type PromptCategory =
   | "writing"
   | "coding"
@@ -52,18 +53,14 @@ export function buildRefinedPromptVersion({
   idea,
   mode = "professional",
   previousPrompt,
-  previousAnalysis,
   versionNumber,
-  outputLanguage = "english",
 }: {
   idea: string;
   mode: PromptModeId;
   previousPrompt?: string;
-  previousAnalysis?: PromptAnalysis;
   versionNumber: number;
-  outputLanguage?: LanguageId;
 }): PromptVersion {
-  const baseResult = optimizePromptLocally(idea, mode, outputLanguage);
+  const baseResult = optimizePromptLocally(idea, mode);
   const normalizedIdea = normalizeIdea(idea);
   const previousContext = previousPrompt?.trim() ? previousPrompt.trim() : baseResult.prompt;
 
@@ -89,7 +86,7 @@ export function buildRefinedPromptVersion({
     `Previous Draft Reference: ${previousContext.slice(0, 240)}`,
   ];
 
-  const prompt = applyOutputLanguage([baseResult.prompt, "", ...refinementLines].join("\n"), outputLanguage);
+  const prompt = [baseResult.prompt, "", ...refinementLines].join("\n");
 
   const analysis: PromptAnalysis = {
     ...baseResult.analysis,
@@ -501,7 +498,7 @@ export function optimizePromptLocally(
   idea: string,
   mode: PromptModeId = "professional",
   outputLanguage: LanguageId = "english",
-  outputStyle: EnglishOutputStyleId = "professional",
+  outputStyle?: EnglishOutputStyleId,
 ): OptimizedPromptResult {
   const normalizedIdea = normalizeIdea(idea);
   const intent = inferIntent(normalizedIdea);
@@ -527,7 +524,7 @@ export function optimizePromptLocally(
   const outputFormat = profile.outputFormat(normalizedIdea);
   const successCriteria = profile.successCriteria(normalizedIdea);
 
-  const styledPrompt = buildPromptForMode(
+  const prompt = buildPromptForMode(
     mode,
     normalizedIdea,
     profile,
@@ -537,12 +534,6 @@ export function optimizePromptLocally(
     outputFormat,
     successCriteria,
     analysis,
-  );
-  const prompt = applyOutputLanguage(
-    outputLanguage === "english" && outputStyle !== "professional"
-      ? `${styledPrompt}\nStyle: Use ${outputStyle} English while preserving the user's intent and required details.`
-      : styledPrompt,
-    outputLanguage,
   );
 
   const missingInfo = detectMissingInformation(normalizedIdea);
@@ -555,7 +546,12 @@ export function optimizePromptLocally(
     mode,
   });
 
-  return { prompt, analysis, score, missingInfo };
+  const localizedPrompt = applyOutputLanguage(prompt, outputLanguage);
+  const styledPrompt = outputLanguage === "english" && outputStyle
+    ? `${localizedPrompt}\nStyle: Use ${outputStyle} English.`
+    : localizedPrompt;
+
+  return { prompt: styledPrompt, analysis, score, missingInfo };
 }
 
 function scorePrompt(input: {

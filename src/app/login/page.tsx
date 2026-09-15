@@ -43,8 +43,8 @@ export default function LoginRoute() {
       if (signInError) throw signInError;
       router.replace("/");
       router.refresh();
-    } catch (err: any) {
-      setError(err?.message ?? "Unable to log in. Please check your details and try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to log in. Please check your details and try again.");
       setLoading(false);
     }
   };

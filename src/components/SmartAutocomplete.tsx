@@ -26,44 +26,26 @@ export function SmartAutocomplete({
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [suggestions, setSuggestions] = useState<PromptSearchResult[]>([]);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>([]);
-  const [sections, setSections] = useState<{
-    recentSearches: string[];
-    mostUsedPrompts: PromptSearchResult[];
-    trendingPrompts: PromptSearchResult[];
-    recommendedPrompts: PromptSearchResult[];
-  } | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
 
-  useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as string[];
-        if (Array.isArray(parsed)) {
-          setRecentSearches(parsed);
-        }
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
       // Ignore storage errors and fall back to defaults.
     }
-  }, []);
 
-  useEffect(() => {
-    setSections(getAutocompleteSections(recentTemplateIds));
-  }, [recentTemplateIds]);
-
-  useEffect(() => {
-    if (!value.trim() || value.trim().length < 2) {
-      setSuggestions([]);
-      setActiveIndex(-1);
-      return;
-    }
-
-    const hits = searchPromptLibrary(value.trim(), 8, recentTemplateIds);
-    setSuggestions(hits);
-    setActiveIndex(-1);
+    return [];
+  });
+  const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>([]);
+  const sections = useMemo(() => getAutocompleteSections(recentTemplateIds), [recentTemplateIds]);
+  const suggestions = useMemo(() => {
+    const query = value.trim();
+    return query.length >= 2 ? searchPromptLibrary(query, 8, recentTemplateIds) : [];
   }, [value, recentTemplateIds]);
 
   function storeRecentSearch(text: string) {
@@ -90,6 +72,11 @@ export function SmartAutocomplete({
     onChange(text);
     storeRecentSearch(text);
     setShowDropdown(false);
+    setActiveIndex(-1);
+  }
+
+  function handleInputChange(nextValue: string) {
+    onChange(nextValue);
     setActiveIndex(-1);
   }
 
@@ -161,7 +148,7 @@ export function SmartAutocomplete({
           id="idea"
           rows={5}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => handleInputChange(event.target.value)}
           onFocus={() => setShowDropdown(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}

@@ -21,7 +21,7 @@ export default function SignUpRoute() {
   const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (!authLoading && user) router.replace("/");
+    if (!authLoading && user) router.replace("/workspace");
   }, [authLoading, router, user]);
 
   const handleSignup = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -51,7 +51,6 @@ export default function SignUpRoute() {
     }
 
     setLoading(true);
-
     if (!supabase) {
       setError("Supabase is not configured for this environment.");
       setLoading(false);
@@ -72,14 +71,14 @@ export default function SignUpRoute() {
         throw new Error("An account with this email already exists. Please log in instead.");
       }
       if (data.session) {
-        router.replace("/");
+        router.replace("/workspace");
         router.refresh();
         return;
       }
       setMessage("Account created. Please check your email to verify your account before logging in.");
       setLoading(false);
-    } catch (err: any) {
-      setError(err?.message ?? "Unable to create your account. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to create your account. Please try again.");
       setLoading(false);
     }
   };

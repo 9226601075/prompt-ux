@@ -1,4 +1,4 @@
-import type { PipelineLayer, PipelineLayerResult } from "../types";
+import type { PipelineLayer } from "../types";
 
 export const structureLayer: PipelineLayer = {
   id: "structure",
